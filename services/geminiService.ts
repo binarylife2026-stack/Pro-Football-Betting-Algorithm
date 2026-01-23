@@ -1,52 +1,59 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { MatchData, PredictionResponse, GroundingSource } from "../types";
+import { MatchData, PredictionResponse, GroundingSource, SportType } from "../types";
+
+const getSportSpecificCategories = (sport: SportType): string[] => {
+  switch (sport) {
+    case 'Cricket':
+      return ['Match Winner', 'Highest Opening Partnership', 'Total Sixes (O/U)', 'Top Wicket Taker', 'Most Fours', '1st Over Runs', 'Man of the Match', 'Toss Winner'];
+    case 'Basketball':
+      return ['Match Winner', 'Spread (Handicap)', 'Total Points (O/U)', 'First Half Winner', 'Player Points (O/U)', 'Total Rebounds', 'Total Assists', '3-Pointers Made'];
+    case 'Tennis':
+      return ['Match Winner', 'Set Betting', 'Total Games (O/U)', 'Handicap Games', 'First Set Winner', 'Total Aces', 'Total Double Faults', 'Tiebreak in Match'];
+    case 'Hockey':
+      return ['Match Winner', 'Total Goals (O/U)', 'Puck Line', 'First Period Winner', 'Most Penalties', 'Shots on Goal (O/U)', 'Power Play Goals', 'Save Percentage Prediction'];
+    case 'Baseball':
+      return ['Match Winner', 'Run Line', 'Total Runs (O/U)', 'First 5 Innings Winner', 'Total Strikeouts', 'Hits+Runs+Errors', 'Home Runs (O/U)', 'Stolen Bases'];
+    case 'Table Tennis':
+      return ['Match Winner', 'Set Handicap', 'Total Points (O/U)', 'First Set Winner', 'Correct Score (Sets)', 'Total Points Home', 'Total Points Away', 'Point Handicap'];
+    default: // Football
+      return ['Match Result (1X2)', 'Double Chance', 'Corner Win', 'Corner Double Chance', 'Yellow Card Win', 'Yellow Card Double Chance', 'Shots on Target Win', 'SOT Double Chance'];
+  }
+};
 
 export const analyzeMatch = async (data: MatchData): Promise<PredictionResponse> => {
-  // Initialize with the API key from process.env.API_KEY as required by guidelines
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const categories = getSportSpecificCategories(data.sport);
   
   const prompt = `
-    Act as a Professional Football Data Analyst and Betting Algorithm.
-    Perform a search for the upcoming match: ${data.homeTeamName} vs ${data.awayTeamName}.
+    Act as a Professional Multi-Sport Data Analyst and Advanced Betting Algorithm.
+    Perform a deep search for the upcoming ${data.sport} match: ${data.homeTeamName} vs ${data.awayTeamName}.
     
     RESEARCH TASKS:
-    1. Find the Last 5 matches form for both teams.
-    2. Find the Last 5 Head-to-Head results.
-    3. Check for recent injuries or suspensions (especially top scorers or defenders).
-    4. Find average team stats: Corners, Yellow Cards, and Shots on Target (SOT).
-    5. Consider any additional context provided: ${data.additionalContext || 'None'}.
+    1. Find the latest 5 matches form, head-to-head records, and injury reports.
+    2. Check ${data.sport}-specific news (e.g., Pitch report for Cricket, Starting Pitcher for Baseball, surface for Tennis).
+    3. Analyze key metrics relevant to ${data.sport}.
+    4. Consider extra context: ${data.additionalContext || 'None'}.
 
-    TACTICAL LOGIC RULES:
-    - If a team has >60% possession avg, favor them for "Corner Win."
-    - If a team has a "High Press" style and a "Lenient Referee," favor "Under" on Yellow Cards.
-    - If a team's top striker/attacking key player is injured, decrease "SOT Win" probability.
+    REQUIRED OUTPUT FORMAT:
+    You MUST start your response with "PREDICTIONS_START" and end with "PREDICTIONS_END".
+    Inside that section, list exactly 8 lines, one for each category below, formatted strictly as:
+    Category: [Prediction] | Confidence: [Percentage]%
 
-    PREDICTION CATEGORIES REQUIRED:
-    1. Match Result (1, X, 2)
-    2. Double Chance (1X, 12, X2)
-    3. Corner Win (Home, Away, or Draw)
-    4. Corner Double Chance (1X, 12, X2)
-    5. Yellow Card Win (Home, Away, or Draw)
-    6. Yellow Card Double Chance (1X, 12, X2)
-    7. Shots on Target (SOT) Win (Home, Away, or Draw)
-    8. Shots on Target (SOT) Double Chance (1X, 12, X2)
+    Categories to analyze for ${data.sport}:
+    ${categories.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
-    OUTPUT FORMAT:
-    1. Provide a clean Markdown table with these columns: Category | Prediction.
-    2. Provide a detailed "Analyst's Tactical Reasoning" section.
+    After "PREDICTIONS_END", provide a detailed "Analyst's Tactical Reasoning" section in professional language.
   `;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
-      // Use string prompt directly for contents
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
-        // thinkingConfig is supported for gemini-3 models
-        thinkingConfig: { thinkingBudget: 24000 },
-        temperature: 0.2,
+        thinkingConfig: { thinkingBudget: 32000 },
+        temperature: 0.1,
       }
     });
     
@@ -56,21 +63,17 @@ export const analyzeMatch = async (data: MatchData): Promise<PredictionResponse>
     if (chunks) {
       chunks.forEach((chunk: any) => {
         if (chunk.web?.uri && chunk.web?.title) {
-          sources.push({
-            title: chunk.web.title,
-            uri: chunk.web.uri
-          });
+          sources.push({ title: chunk.web.title, uri: chunk.web.uri });
         }
       });
     }
 
     return {
-      // Access text as a property, not a method
       text: response.text || "Analysis failed.",
-      sources: Array.from(new Map(sources.map(s => [s.uri, s])).values()) // Deduplicate sources
+      sources: Array.from(new Map(sources.map(s => [s.uri, s])).values())
     };
   } catch (error) {
     console.error("Gemini API Error:", error);
-    throw new Error("The algorithm encountered a network error. Ensure the team names are correct.");
+    throw new Error("Algorithm error. Please verify team names and try again.");
   }
 };

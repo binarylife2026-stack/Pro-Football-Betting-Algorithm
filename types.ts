@@ -1,5 +1,8 @@
 
+export type SportType = 'Football' | 'Cricket' | 'Hockey' | 'Basketball' | 'Tennis' | 'Table Tennis' | 'Baseball';
+
 export interface MatchData {
+  sport: SportType;
   homeTeamName: string;
   awayTeamName: string;
   additionalContext?: string;
